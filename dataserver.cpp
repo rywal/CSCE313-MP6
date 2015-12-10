@@ -30,16 +30,17 @@
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <getopt.h>
 
-#include "reqchannel.h"
+#include "networkreqchannel.h"
 
 using namespace std;
 
 /*--------------------------------------------------------------------------*/
 /* DATA STRUCTURES */ 
 /*--------------------------------------------------------------------------*/
-
-    /* -- (none) -- */
+unsigned short port = 1738; // ayy - port number for server
+int backlog; // backlog of the server socket
 
 /*--------------------------------------------------------------------------*/
 /* CONSTANTS */
@@ -52,12 +53,13 @@ using namespace std;
 /*--------------------------------------------------------------------------*/
 
 static int nthreads = 0;
+int MAX_MSG = 255;
 
 /*--------------------------------------------------------------------------*/
 /* FORWARDS */
 /*--------------------------------------------------------------------------*/
 
-void handle_process_loop(RequestChannel & _channel);
+//void handle_process_loop(NetworkRequestChannel & _channel);
 
 /*--------------------------------------------------------------------------*/
 /* LOCAL FUNCTIONS -- SUPPORT FUNCTIONS */
@@ -69,103 +71,72 @@ string int2string(int number) {
    return ss.str();//return a string with the contents of the stream
 }
 
+string server_read(int * fd){
+    char buf[MAX_MSG];
+    
+    read(*fd, buf, MAX_MSG);
+    string s = buf;
+    return s;
+}
+
+int server_write(int * fd, string m){
+    if(m.length() >= MAX_MSG)
+        cerr << "Message too big\n";
+    
+    if(write(*fd, m.c_str(), m.length()+1) < 0)
+        cerr << "Write error\n";
+    
+}
+
 /*--------------------------------------------------------------------------*/
 /* LOCAL FUNCTIONS -- THREAD FUNCTIONS */
 /*--------------------------------------------------------------------------*/
 
-void * handle_data_requests(void * args) {
-
-  RequestChannel * data_channel =  (RequestChannel*)args;
-
-  // -- Handle client requests on this channel. 
-  
-  handle_process_loop(*data_channel);
-
-  // -- Client has quit. We remove channel.
- 
-  delete data_channel;
-    return NULL;
-}
 
 /*--------------------------------------------------------------------------*/
 /* LOCAL FUNCTIONS -- INDIVIDUAL REQUESTS */
 /*--------------------------------------------------------------------------*/
 
-void process_hello(RequestChannel & _channel, const string & _request) {
-  _channel.cwrite("hello to you too");
+void process_hello(int * fd, const string & _request) {
+  server_write(fd, "hello to you too");
 }
 
 void process_data(RequestChannel & _channel, const string &  _request) {
   usleep(1000 + (rand() % 5000));
-  //_channel.cwrite("here comes data about " + _request.substr(4) + ": " + int2string(random() % 100));
-  _channel.cwrite(int2string(rand() % 100));
-}
-
-void process_newthread(RequestChannel & _channel, const string & _request) {
-  int error;
-  nthreads ++;
-
-  // -- Name new data channel
-
-  string new_channel_name = "data" + int2string(nthreads) + "_";
-  //  cout << "new channel name = " << new_channel_name << endl;
-
-  // -- Pass new channel name back to client
-
-  _channel.cwrite(new_channel_name);
-
-  // -- Construct new data channel (pointer to be passed to thread function)
-  
-  RequestChannel * data_channel = new RequestChannel(new_channel_name, RequestChannel::SERVER_SIDE);
-
-  // -- Create new thread to handle request channel
-
-  pthread_t thread_id;
-  //  cout << "starting new thread " << nthreads << endl;
-  if ((error = pthread_create(& thread_id, NULL, handle_data_requests, data_channel))) {
-    fprintf(stderr, "p_create failed: %s\n", strerror(error));
-  }  
-
+    server_write(fd, int2string(rand() % 100));
 }
 
 /*--------------------------------------------------------------------------*/
 /* LOCAL FUNCTIONS -- THE PROCESS REQUEST LOOP */
 /*--------------------------------------------------------------------------*/
 
-void process_request(RequestChannel & _channel, const string & _request) {
+void process_request(int *fd, const string & _request) {
 
   if (_request.compare(0, 5, "hello") == 0) {
-    process_hello(_channel, _request);
+    process_hello(fd, _request);
   }
   else if (_request.compare(0, 4, "data") == 0) {
-    process_data(_channel, _request);
-  }
-  else if (_request.compare(0, 9, "newthread") == 0) {
-    process_newthread(_channel, _request);
-  }
-  else {
-    _channel.cwrite("unknown request");
+    process_data(fd, _request);
   }
 
 }
 
-void handle_process_loop(RequestChannel & _channel) {
+void *connection_handler(void * arg) {
+    int *fd = (int*)arg;
+    if(fd == NULL)
+        cout << "Incorrect file descriptor\n";
+        
+    for(;;) {
+        string request = server_read(fd);
 
-  for(;;) {
+        if (request.compare("quit") == 0) {
+            server_write(fd, "bye");
+            usleep(8000);
+            break;
+        }
 
-    cout << "Reading next request from channel (" << _channel.name() << ") ..." << flush;
-    string request = _channel.cread();
-    cout << " done (" << _channel.name() << ")." << endl;
-    cout << "New request is " << request << endl;
-
-    if (request.compare("quit") == 0) {
-      _channel.cwrite("bye");
-      usleep(10000);          // give the other end a bit of time.
-      break;                  // break out of the loop;
+        process_request(fd, request);
     }
-
-    process_request(_channel, request);
-  }
   
 }
 
@@ -174,12 +145,27 @@ void handle_process_loop(RequestChannel & _channel) {
 /*--------------------------------------------------------------------------*/
 
 int main(int argc, char * argv[]) {
+    int opt;
+    while ((opt = getopt(argc, argv, "p:b:")) != -1) {
+        switch (opt) {
+            case 'b':
+                backlog = atoi(optarg);
+                break;
+            case 'p':
+                port = atoi(optarg);
+                break;
+            default:
+                port = 1738;
+                backlog = 10;
+        }
+    }
 
   //  cout << "Establishing control channel... " << flush;
-  RequestChannel control_channel("control", RequestChannel::SERVER_SIDE);
+    cout << "SERVER STARTED: Port " << port << endl;
+    NetWorkRequestChannel server(port, connection_handler, backlog);
   //  cout << "done.\n" << flush;
 
-  handle_process_loop(control_channel);
+    server.~NetworkRequestChannel();
 
 }
 

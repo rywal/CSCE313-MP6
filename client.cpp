@@ -37,7 +37,7 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
-#include "reqchannel.h"
+#include "networkreqchannel.h"
 #include "boundedbuffer.h"
 
 #define NUM_PEOPLE 3
@@ -49,6 +49,9 @@ using namespace std::chrono;
 /*--------------------------------------------------------------------------*/
 /* DATA STRUCTURES */ 
 /*--------------------------------------------------------------------------*/
+
+unsigned short port = 1738; // ayyy
+string host = "localhost";
 
 // Index in request/stats threads represents people:
 //     index 0 - Joe Smith
@@ -117,7 +120,6 @@ void print_histograms(){
 
 // Function to be performed by request thread
 void* request_thread(void* req_id) {
-//    printf("Request thread id is %i\n", req_id);
     int request_id = *((int*) req_id);
     
     for(int i = 0; i < num_requests; i++){
@@ -138,8 +140,8 @@ void histogram_alarm(int sig){
 
 // Function to be performed by the event handler thread
 void* event_thread(void* c){
-    RequestChannel chan("control", RequestChannel::CLIENT_SIDE);
-    RequestChannel* channels[num_worker_threads];
+    NetworkRequestChannel chan(host, port);
+    NetworkRequestChannel* channels[num_worker_threads];
     fd_set read_fd_set;
     int persons[num_worker_threads];
     int write_count, read_count, max, selected = 0;
@@ -149,7 +151,7 @@ void* event_thread(void* c){
     // Setup request channels and start off persons[] clean
     for(int i = 0; i < num_worker_threads; i++){
         string reply = chan.send_request("newthread");
-        channels[i] = new RequestChannel(reply, RequestChannel::CLIENT_SIDE);
+        channels[i] = = new NetworkRequestChannel(host, port);;
         persons[i] = -1;
     }
     
@@ -202,9 +204,9 @@ void* event_thread(void* c){
     
     // Close channels
     for(int i = 0; i < num_worker_threads; i++){
-        channels[i]->send_request("quit");
+        channels[i]->cwrite("quit");
     }
-    chan.send_request("quit");
+    chan.cwrite("quit");
     
     return 0;
 }
@@ -234,7 +236,7 @@ void* stats_thread(void* req_id) {
 
 int main(int argc, char * argv[]) {
     int opt;
-    while ((opt = getopt(argc, argv, "n:b:w:")) != -1) {
+    while ((opt = getopt(argc, argv, "n:b:w:h:p:")) != -1) {
         switch (opt) {
             case 'n':
                 num_requests = atoi(optarg);
@@ -245,10 +247,18 @@ int main(int argc, char * argv[]) {
             case 'w':
                 num_worker_threads = atoi(optarg);
                 break;
+            case 'h':
+                host = atoi(optarg);
+                break;
+            case 'p':
+                port = atoi(optarg);
+                break;
             default:
                 num_requests = 10000;
                 buffer_size = 300;
                 num_worker_threads = 15;
+                port = 1738;
+                host = "localhost";
         }
     }
    
@@ -257,92 +267,79 @@ int main(int argc, char * argv[]) {
     pthread_t stats_threads[NUM_PEOPLE];
     
     buffer = new BoundedBuffer(buffer_size);
-    for(int i = 0; i < num_request_threads; i ++)
-        response_buffers[i] = new BoundedBuffer(buffer_size);
-    
-    for(int i = 0; i < NUM_PEOPLE; i++){
-        name_ids[i] = new int(i);
+    cout << "CLIENT STARTED:" << endl;
+
+    signal(SIGALRM, histogram_alarm);   //Tieing alarm to handler
+    struct itimerval timer;
+    timer.it_value.tv_sec = TIME_INTERVAL/1000;
+    timer.it_value.tv_usec = (TIME_INTERVAL*1000) % 1000000;
+    timer.it_interval = timer.it_value;
+    if(setitimer(ITIMER_REAL, &timer, NULL) == -1){
+        perror("error calling setitimer()");
     }
+
     
-    int pid = fork();
-    if (pid == 0) {
-        //this process is the 'child', so run the dataserver
-        system("./dataserver > /dev/null");
-    } else {
-        cout << "CLIENT STARTED:" << endl;
+//    cout << "Establishing control channel... " << flush;
+//    NetworkRequestChannel chan(host, port);
+//    cout << "done." << endl;;
 
-        signal(SIGALRM, histogram_alarm);   //Tieing alarm to handler
-        struct itimerval timer;
-        timer.it_value.tv_sec = TIME_INTERVAL/1000;
-        timer.it_value.tv_usec = (TIME_INTERVAL*1000) % 1000000;
-        timer.it_interval = timer.it_value;
-        if(setitimer(ITIMER_REAL, &timer, NULL) == -1){
-            perror("error calling setitimer()");
-        }
-
-        
-        cout << "Establishing control channel... " << flush;
-        RequestChannel chan("control", RequestChannel::CLIENT_SIDE);
-        cout << "done." << endl;;
-
-        // Start time calculation
-        start_time = high_resolution_clock::now();
-        
-        cout << "Creating request threads...\n";
-        for(int i = 0; i < num_request_threads; i++){
-            pthread_create(&request_threads[i], NULL, request_thread, (void*)name_ids[i]);
-        }
-        cout << "-- done\n";
-        
-        cout << "Creating event handler thread...\n";
-        pthread_create(&event_handler_thread, NULL, event_thread, NULL);
-        cout << "-- done\n";
-        
-        cout << "Creating stats threads...\n";
-        for(int i = 0; i < num_request_threads; i++){
-            pthread_create(&stats_threads[i], NULL, stats_thread, (void*)name_ids[i]);
-        }
-        cout << "-- done\n";
-        
-        cout << "Waiting on request threads\n";
-        // Join threads
-        for (int i = 0; i < num_request_threads; ++i){
-            pthread_join(request_threads[i], NULL);
-        }
-        cout << "Finished: request threads\n";
-        
-        cout << "Waiting on even handler\n";
-        pthread_join(event_handler_thread, NULL);
-        cout << "-- done\n";
-        
-        cout << "Waiting on stats threads\n";
-        for(int i = 0; i < num_request_threads; i++)
-            pthread_join(stats_threads[i], NULL);
-        cout << "Finished: stats threads\n";
-        
-        // End time calculation
-        end_time = high_resolution_clock::now();
-        runtime = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-        runtime = runtime/1000;
-        
-        string quit_reply = chan.send_request("quit");
-        cout << "Reply to request 'quit' is '" << quit_reply << "'" << endl;
-        sleep(1); // Waits until server fork is closed
-        
-        // Echo out statistics
-        cout << "Finished!\n\n";
-        cout << "------------------------------\n";
-        cout << "           Statistics         \n";
-        cout << "------------------------------\n";
-        cout << "Data requests per person: " << num_requests << "\n";
-        cout << "Size of bounded buffer:   " << buffer_size << "\n";
-        cout << "Worker threads:           " << num_worker_threads << "\n";
-        cout << "Run Time:                 " << runtime << "s\n";
-        
-        // Echo out histogram
-        cout << "\n\n------------------------------\n";
-        cout << "           Histogram          \n";
-        cout << "------------------------------\n";
-        print_histograms();
+    // Start time calculation
+    start_time = high_resolution_clock::now();
+    
+    cout << "Creating request threads...\n";
+    for(int i = 0; i < num_request_threads; i++){
+        pthread_create(&request_threads[i], NULL, request_thread, (void*)name_ids[i]);
     }
+    cout << "-- done\n";
+    
+    cout << "Creating event handler thread...\n";
+    pthread_create(&event_handler_thread, NULL, event_thread, NULL);
+    cout << "-- done\n";
+    
+    cout << "Creating stats threads...\n";
+    for(int i = 0; i < num_request_threads; i++){
+        pthread_create(&stats_threads[i], NULL, stats_thread, (void*)name_ids[i]);
+    }
+    cout << "-- done\n";
+    
+    cout << "Waiting on request threads\n";
+    // Join threads
+    for (int i = 0; i < num_request_threads; ++i){
+        pthread_join(request_threads[i], NULL);
+    }
+    cout << "Finished: request threads\n";
+    
+    cout << "Waiting on even handler\n";
+    pthread_join(event_handler_thread, NULL);
+    cout << "-- done\n";
+    
+    cout << "Waiting on stats threads\n";
+    for(int i = 0; i < num_request_threads; i++)
+        pthread_join(stats_threads[i], NULL);
+    cout << "Finished: stats threads\n";
+    
+    // End time calculation
+    end_time = high_resolution_clock::now();
+    runtime = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
+    runtime = runtime/1000;
+    
+//    string quit_reply = chan.send_request("quit");
+//    cout << "Reply to request 'quit' is '" << quit_reply << "'" << endl;
+    sleep(1); // Waits until server fork is closed
+    
+    // Echo out statistics
+    cout << "Finished!\n\n";
+    cout << "------------------------------\n";
+    cout << "           Statistics         \n";
+    cout << "------------------------------\n";
+    cout << "Data requests per person: " << num_requests << "\n";
+    cout << "Size of bounded buffer:   " << buffer_size << "\n";
+    cout << "Worker threads:           " << num_worker_threads << "\n";
+    cout << "Run Time:                 " << runtime << "s\n";
+    
+    // Echo out histogram
+    cout << "\n\n------------------------------\n";
+    cout << "           Histogram          \n";
+    cout << "------------------------------\n";
+    print_histograms();
 }
