@@ -26,7 +26,10 @@
 #include <string>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include<sys/socket.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 using namespace std;
 
@@ -75,6 +78,8 @@ public:
 
     /* Write the data to the channel. The function returns the number of characters written to the channel. */
     int cwrite(string _msg);
+    
+    int get_fd();
 };
 
 

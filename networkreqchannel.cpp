@@ -27,7 +27,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
-
+#include <pthread.h>
 #include <errno.h>
 
 #include "networkreqchannel.h"
@@ -69,7 +69,7 @@ NetworkRequestChannel::NetworkRequestChannel(const string _server_host_name, con
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = NULL;
-    getaddrinfo(_host_server_name.c_str(), _port_no, &hints, &server_info);
+    getaddrinfo(_server_host_name.c_str(), _port_no, &hints, &server_info);
     server_addr = (sockaddr_in)(server_info[0].ai_addr);
     freeaddrinfo(server_info);
     int error = accept(socket_client, (struct sockaddr*)&server_addr, sizeof(server_addr));
