@@ -52,8 +52,7 @@ using namespace std;
 class NetworkRequestChannel {
 
 private:
-
-    int socket_server, socket_client;
+    int sockfd, newfd, status;
     struct sockaddr_in server, server_addr;
 
 public:
@@ -61,11 +60,11 @@ public:
     /* -- CONSTRUCTOR/DESTRUCTOR */
 
     /* Creates a CLIENT-SIDE local copy of the channel. The channel is connected to the given port number at the given server host. THIS CONSTRUCTOR IS CALLED BY THE CLIENT. */
-    NetworkRequestChannel(const string _server_host_name, const unsigned short _port_no);
+    NetworkRequestChannel(const char* _server_host_name, const char* _port_no);
 
     /* Creates a SERVER-SIDE local copy of the channel that is accepting connections at the given port number. NOTE that multiple clients can be connected to the same server-side end of the request channel. Whenever a new connection comes in, it is accepted by the server, and the given connection handler is invoked. The parameter to the connection handler is the file descriptor of the slave socket returned by the accept call. NOTE that the connection handler does not want to deal with closing the socket. You will
      have to close the socket once the connection handler is done. */
-    NetworkRequestChannel(const unsigned short _port_no, void * (*connection_handler) (int *));
+    NetworkRequestChannel(const char* _port_no, void * (*connection_handler)(void*), int backlog);
 
     /* Destructor of the local copy of the channel. */
     ~NetworkRequestChannel();
@@ -79,7 +78,11 @@ public:
     /* Write the data to the channel. The function returns the number of characters written to the channel. */
     int cwrite(string _msg);
     
-    int get_fd();
+    void process_request(const string & _request);
+    void process_hello(const string & _request);
+    void process_data(const string &  _request);
+    
+    int read_socket(){ return sockfd; }
 };
 
 

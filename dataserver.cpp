@@ -38,8 +38,7 @@ using namespace std;
 
 /*--------------------------------------------------------------------------*/
 /* DATA STRUCTURES */ 
-/*--------------------------------------------------------------------------*/
-unsigned short port = 1738; // ayy - port number for server
+char* port = "1738"; // ayy - port number for server
 int backlog; // backlog of the server socket
 
 /*--------------------------------------------------------------------------*/
@@ -97,45 +96,44 @@ int server_write(int * fd, string m){
 /* LOCAL FUNCTIONS -- INDIVIDUAL REQUESTS */
 /*--------------------------------------------------------------------------*/
 
-void process_hello(int * fd, const string & _request) {
-  server_write(fd, "hello to you too");
+void process_hello(NetworkRequestChannel *reqchan, const string & _request) {
+  reqchan->cwrite("hello to you too");
 }
 
-void process_data(RequestChannel & _channel, const string &  _request) {
+void process_data(NetworkRequestChannel *reqchan, const string &  _request) {
   usleep(1000 + (rand() % 5000));
-    server_write(fd, int2string(rand() % 100));
+    reqchan->cwrite(int2string(rand() % 100));
 }
 
 /*--------------------------------------------------------------------------*/
 /* LOCAL FUNCTIONS -- THE PROCESS REQUEST LOOP */
 /*--------------------------------------------------------------------------*/
 
-void process_request(int *fd, const string & _request) {
+void process_request(NetworkRequestChannel *reqchan, const string & _request) {
 
   if (_request.compare(0, 5, "hello") == 0) {
-    process_hello(fd, _request);
+    process_hello(reqchan, _request);
   }
   else if (_request.compare(0, 4, "data") == 0) {
-    process_data(fd, _request);
+    process_data(reqchan, _request);
   }
 
 }
 
 void *connection_handler(void * arg) {
-    int *fd = (int*)arg;
-    if(fd == NULL)
-        cout << "Incorrect file descriptor\n";
-        
+    char buf[1024];
+    NetworkRequestChannel *chan = (NetworkRequestChannel*)arg;
     for(;;) {
-        string request = server_read(fd);
+        recv(chan->read_socket(), buf, sizeof(buf), 0);
+        string request = buf;
 
         if (request.compare("quit") == 0) {
-            server_write(fd, "bye");
+            chan->cwrite("bye");
             usleep(8000);
             break;
         }
 
-        process_request(fd, request);
+        process_request(chan, request);
     }
   
 }
@@ -152,20 +150,17 @@ int main(int argc, char * argv[]) {
                 backlog = atoi(optarg);
                 break;
             case 'p':
-                port = atoi(optarg);
+                port = (char*)atoi(optarg);
                 break;
             default:
-                port = 1738;
+                port = "1738";
                 backlog = 10;
         }
     }
 
   //  cout << "Establishing control channel... " << flush;
     cout << "SERVER STARTED: Port " << port << endl;
-    NetWorkRequestChannel server(port, connection_handler, backlog);
-  //  cout << "done.\n" << flush;
-
-    server.~NetworkRequestChannel();
+    NetworkRequestChannel server(port, connection_handler, backlog);
 
 }
 

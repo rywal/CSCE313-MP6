@@ -11,8 +11,8 @@ endif
 
 all: dataserver client
 
-reqchannel.o: networkreqchannel.h networkreqchannel.cpp
-	$(cc) -std=c++11 -c -g networkreqchannel.cpp
+networkreqchannel.o: networkreqchannel.h networkreqchannel.cpp
+	$(cc) -std=c++11 -c -g networkreqchannel.cpp -lpthread
 
 dataserver: dataserver.cpp networkreqchannel.o
 	$(cc) -std=c++11 -g -o dataserver dataserver.cpp networkreqchannel.o -lpthread

@@ -50,8 +50,8 @@ using namespace std::chrono;
 /* DATA STRUCTURES */ 
 /*--------------------------------------------------------------------------*/
 
-unsigned short port = 1738; // ayyy
-string host = "localhost";
+char* port = "1738"; // ayyy
+char* host = "localhost";
 
 // Index in request/stats threads represents people:
 //     index 0 - Joe Smith
@@ -150,8 +150,7 @@ void* event_thread(void* c){
     
     // Setup request channels and start off persons[] clean
     for(int i = 0; i < num_worker_threads; i++){
-        string reply = chan.send_request("newthread");
-        channels[i] = = new NetworkRequestChannel(host, port);;
+        channels[i] = new NetworkRequestChannel(host, port);;
         persons[i] = -1;
     }
     
@@ -172,16 +171,16 @@ void* event_thread(void* c){
         
         FD_ZERO(&read_fd_set);
         for(int i = 0; i < num_worker_threads; i++){
-            if(channels[i]->read_fd() > max)
-                max = channels[i]->read_fd();
-            FD_SET(channels[i]->read_fd(), &read_fd_set);
+            if(channels[i]->read_socket() > max)
+                max = channels[i]->read_socket();
+            FD_SET(channels[i]->read_socket(), &read_fd_set);
         }
         
         selected = select(max+1, &read_fd_set, NULL, NULL, &to);
         
         if(selected){
             for(int i = 0; i < num_worker_threads; i++){
-                if(FD_ISSET(channels[i]->read_fd(), &read_fd_set)){
+                if(FD_ISSET(channels[i]->read_socket(), &read_fd_set)){
                     string server_response = channels[i]->cread();
                     read_count++;
                     response_buffers[persons[i]]->push(Response(server_response, persons[i], 0));
@@ -248,16 +247,16 @@ int main(int argc, char * argv[]) {
                 num_worker_threads = atoi(optarg);
                 break;
             case 'h':
-                host = atoi(optarg);
+                host = (char*)atoi(optarg);
                 break;
             case 'p':
-                port = atoi(optarg);
+                port = (char*)atoi(optarg);
                 break;
             default:
                 num_requests = 10000;
                 buffer_size = 300;
                 num_worker_threads = 15;
-                port = 1738;
+                port = "1738";
                 host = "localhost";
         }
     }
