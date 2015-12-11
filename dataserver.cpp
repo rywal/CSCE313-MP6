@@ -38,7 +38,7 @@ using namespace std;
 
 /*--------------------------------------------------------------------------*/
 /* DATA STRUCTURES */ 
-char* port = "1738"; // ayy - port number for server
+char const* port = "50001"; // ayy - port number for server
 int backlog; // backlog of the server socket
 
 /*--------------------------------------------------------------------------*/
@@ -150,10 +150,10 @@ int main(int argc, char * argv[]) {
                 backlog = atoi(optarg);
                 break;
             case 'p':
-                port = (char*)atoi(optarg);
+                port = (char const*)atoi(optarg);
                 break;
             default:
-                port = "1738";
+                port = "5001";
                 backlog = 10;
         }
     }

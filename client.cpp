@@ -50,8 +50,8 @@ using namespace std::chrono;
 /* DATA STRUCTURES */ 
 /*--------------------------------------------------------------------------*/
 
-char* port = "1738"; // ayyy
-char* host = "localhost";
+char const* port = "50001"; // ayyy
+char const* host = "127.0.0.1";
 
 // Index in request/stats threads represents people:
 //     index 0 - Joe Smith
@@ -247,17 +247,17 @@ int main(int argc, char * argv[]) {
                 num_worker_threads = atoi(optarg);
                 break;
             case 'h':
-                host = (char*)atoi(optarg);
+                host = (char const*)atoi(optarg);
                 break;
             case 'p':
-                port = (char*)atoi(optarg);
+                port = (char const*)atoi(optarg);
                 break;
             default:
                 num_requests = 10000;
                 buffer_size = 300;
                 num_worker_threads = 15;
-                port = "1738";
-                host = "localhost";
+                port = "50001";
+                host = "127.0.0.1";
         }
     }
    
@@ -278,9 +278,9 @@ int main(int argc, char * argv[]) {
     }
 
     
-//    cout << "Establishing control channel... " << flush;
-//    NetworkRequestChannel chan(host, port);
-//    cout << "done." << endl;;
+    cout << "Establishing control channel... " << flush;
+    NetworkRequestChannel chan(host, port);
+    cout << "done." << endl;;
 
     // Start time calculation
     start_time = high_resolution_clock::now();
@@ -322,9 +322,8 @@ int main(int argc, char * argv[]) {
     runtime = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
     runtime = runtime/1000;
     
-//    string quit_reply = chan.send_request("quit");
-//    cout << "Reply to request 'quit' is '" << quit_reply << "'" << endl;
-    sleep(1); // Waits until server fork is closed
+    string quit_reply = chan.send_request("quit");
+    cout << "Reply to request 'quit' is '" << quit_reply << "'" << endl;
     
     // Echo out statistics
     cout << "Finished!\n\n";
