@@ -60,7 +60,7 @@ char const* host = "127.0.0.1";
 int num_request_threads = NUM_PEOPLE;
 int request_counts[NUM_PEOPLE];
 
-int num_requests = 10000;
+int num_requests = 0;
 int num_worker_threads = 15;
 int buffer_size = 800;
 
@@ -140,6 +140,7 @@ void histogram_alarm(int sig){
 
 // Function to be performed by the event handler thread
 void* event_thread(void* c){
+    num_requests = (uintptr_t)c;
     NetworkRequestChannel chan(host, port);
     NetworkRequestChannel* channels[num_worker_threads];
     fd_set read_fd_set;
@@ -152,6 +153,9 @@ void* event_thread(void* c){
     for(int i = 0; i < num_worker_threads; i++){
         channels[i] = new NetworkRequestChannel(host, port);;
         persons[i] = -1;
+        if(channels[i]->read_socket() > max) {
+            max = channels[i]->read_socket();
+        }
     }
     
     // Fill channels with initial set of requests
@@ -162,6 +166,7 @@ void* event_thread(void* c){
         write_count++;
     }
     
+    
     while(true){
         //Print histogram if flagged
         if(print_histo_flag){
@@ -170,9 +175,10 @@ void* event_thread(void* c){
         }
         
         FD_ZERO(&read_fd_set);
+        
         for(int i = 0; i < num_worker_threads; i++){
-            if(channels[i]->read_socket() > max)
-                max = channels[i]->read_socket();
+//            if(channels[i]->read_socket() > max)
+//                max = channels[i]->read_socket();
             FD_SET(channels[i]->read_socket(), &read_fd_set);
         }
         
@@ -205,7 +211,7 @@ void* event_thread(void* c){
     for(int i = 0; i < num_worker_threads; i++){
         channels[i]->cwrite("quit");
     }
-    chan.cwrite("quit");
+    //chan.cwrite("quit");
     
     return 0;
 }
@@ -247,10 +253,10 @@ int main(int argc, char * argv[]) {
                 num_worker_threads = atoi(optarg);
                 break;
             case 'h':
-                host = (char const*)atoi(optarg);
+                host = optarg;
                 break;
             case 'p':
-                port = (char const*)atoi(optarg);
+                port = optarg;
                 break;
             default:
                 num_requests = 10000;
@@ -266,6 +272,13 @@ int main(int argc, char * argv[]) {
     pthread_t stats_threads[NUM_PEOPLE];
     
     buffer = new BoundedBuffer(buffer_size);
+    for(int i = 0; i < num_request_threads; i ++)
+        response_buffers[i] = new BoundedBuffer(buffer_size);
+    
+    for(int i = 0; i < NUM_PEOPLE; i++){
+        name_ids[i] = new int(i);
+    }
+    
     cout << "CLIENT STARTED:" << endl;
 
     signal(SIGALRM, histogram_alarm);   //Tieing alarm to handler
@@ -278,9 +291,9 @@ int main(int argc, char * argv[]) {
     }
 
     
-    cout << "Establishing control channel... " << flush;
-    NetworkRequestChannel chan(host, port);
-    cout << "done." << endl;;
+//    cout << "Establishing control channel... " << flush;
+//    NetworkRequestChannel chan(host, port);
+//    cout << "done." << endl;;
 
     // Start time calculation
     start_time = high_resolution_clock::now();
@@ -292,7 +305,7 @@ int main(int argc, char * argv[]) {
     cout << "-- done\n";
     
     cout << "Creating event handler thread...\n";
-    pthread_create(&event_handler_thread, NULL, event_thread, NULL);
+    pthread_create(&event_handler_thread, NULL, event_thread, (void*)num_requests);
     cout << "-- done\n";
     
     cout << "Creating stats threads...\n";
@@ -322,8 +335,8 @@ int main(int argc, char * argv[]) {
     runtime = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
     runtime = runtime/1000;
     
-    string quit_reply = chan.send_request("quit");
-    cout << "Reply to request 'quit' is '" << quit_reply << "'" << endl;
+//    string quit_reply = chan.send_request("quit");
+//    cout << "Reply to request 'quit' is '" << quit_reply << "'" << endl;
     
     // Echo out statistics
     cout << "Finished!\n\n";
@@ -332,7 +345,7 @@ int main(int argc, char * argv[]) {
     cout << "------------------------------\n";
     cout << "Data requests per person: " << num_requests << "\n";
     cout << "Size of bounded buffer:   " << buffer_size << "\n";
-    cout << "Worker threads:           " << num_worker_threads << "\n";
+    cout << "Worker threads:           " << num_request_threads << "\n";
     cout << "Run Time:                 " << runtime << "s\n";
     
     // Echo out histogram

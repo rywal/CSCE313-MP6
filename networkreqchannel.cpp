@@ -71,6 +71,8 @@ NetworkRequestChannel::NetworkRequestChannel(const char* _server_host_name, cons
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     
+    int status = 0;
+    
     if ((status = getaddrinfo(_server_host_name, _port_no, &hints, &res)) != 0)
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
     // make a socket:
@@ -96,13 +98,21 @@ NetworkRequestChannel::NetworkRequestChannel(const char* _port_no, void * (*conn
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
     
-    if ((rv = getaddrinfo(NULL, _port_no, &hints, &serv)) != 0)
+    if ((rv = getaddrinfo(NULL, _port_no, &hints, &serv)) != 0){
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+        exit(1);
+    }
     
-    if ((sockfd = socket(serv->ai_family, serv->ai_socktype, serv->ai_protocol)) == -1)
+    if ((sockfd = socket(serv->ai_family, serv->ai_socktype, serv->ai_protocol)) == -1){
         perror("server: socket");
+        exit(1);
+    }
     
-    bind(sockfd, serv->ai_addr, serv->ai_addrlen);
+    if (::bind(sockfd, serv->ai_addr, serv->ai_addrlen) == -1) {
+        close(sockfd);
+        perror("server: bind");
+        exit(1);
+    }
     
     freeaddrinfo(serv); // all done with this structure
     
@@ -121,7 +131,7 @@ NetworkRequestChannel::NetworkRequestChannel(const char* _port_no, void * (*conn
             continue;
         }
         
-        pthread_create(&tid, NULL, connection_handler,&newfd);
+        pthread_create(&tid, NULL, connection_handler, &newfd);
     }
 }
 
@@ -141,7 +151,7 @@ string NetworkRequestChannel::send_request(string _request){
 string NetworkRequestChannel::cread(){
     char buf[255];
     if (recv (sockfd, buf, sizeof(buf), 0) < 0) {
-        perror(string("Error reading from pipe!").c_str());
+        perror("Error recieving message");
     }
     string s = buf;
     return s;
@@ -150,11 +160,12 @@ string NetworkRequestChannel::cread(){
 /* Write the data to the channel. The function returns the number of characters written to the channel. */
 int NetworkRequestChannel::cwrite(string _msg){
     if (_msg.length() >= 255) {
-        cerr << "Message too long for Channel!\n";
+        cerr << "Message exceeds max length\n";
         return -1;
     }
     const char * msg = _msg.c_str();
     if (send(sockfd, msg, strlen(msg)+1, 0) < 0) {
-        perror(string("Error writing to pipe!").c_str());
+        perror("Error sending message");
     }
+    return 0;
 }

@@ -82,8 +82,12 @@ int server_write(int * fd, string m){
     if(m.length() >= MAX_MSG)
         cerr << "Message too big\n";
     
-    if(write(*fd, m.c_str(), m.length()+1) < 0)
+    if(write(*fd, m.c_str(), m.length()+1) < 0){
         cerr << "Write error\n";
+        return -1;
+    } else {
+        return 0;
+    }
     
 }
 
@@ -136,6 +140,7 @@ void *connection_handler(void * arg) {
         process_request(chan, request);
     }
   
+    return 0;
 }
 
 /*--------------------------------------------------------------------------*/
@@ -150,7 +155,7 @@ int main(int argc, char * argv[]) {
                 backlog = atoi(optarg);
                 break;
             case 'p':
-                port = (char const*)atoi(optarg);
+                port = optarg;
                 break;
             default:
                 port = "5001";

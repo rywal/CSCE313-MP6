@@ -52,8 +52,7 @@ using namespace std;
 class NetworkRequestChannel {
 
 private:
-    int sockfd, newfd, status;
-    struct sockaddr_in server, server_addr;
+    int sockfd, newfd;
 
 public:
 
