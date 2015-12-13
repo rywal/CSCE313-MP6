@@ -60,8 +60,8 @@ char const* host = "127.0.0.1";
 int num_request_threads = NUM_PEOPLE;
 int request_counts[NUM_PEOPLE];
 
-int num_requests = 0;
-int num_worker_threads = 15;
+int num_requests = 20;
+int num_worker_threads = 1;
 int buffer_size = 800;
 
 BoundedBuffer *buffer;
@@ -122,7 +122,7 @@ void print_histograms(){
 void* request_thread(void* req_id) {
     int request_id = *((int*) req_id);
     
-    for(int i = 0; i < num_requests; i++){
+    for(int i = 0; i < num_requests+1; i++){
         Response res = Response("something", request_id, 0);
         request_counts[request_id]++;
         res.data = "data " + request_names[request_id];
@@ -140,18 +140,19 @@ void histogram_alarm(int sig){
 
 // Function to be performed by the event handler thread
 void* event_thread(void* c){
-    num_requests = (uintptr_t)c;
+    int num_request_channels = (uintptr_t)c;
+    num_worker_threads = 1;
     NetworkRequestChannel chan(host, port);
-    NetworkRequestChannel* channels[num_worker_threads];
+    NetworkRequestChannel* channels[num_request_channels];
     fd_set read_fd_set;
-    int persons[num_worker_threads];
+    int persons[NUM_PEOPLE];
     int write_count, read_count, max, selected = 0;
     Response response = Response("blank", -1, -1);
     struct timeval to = {0,10}; // Select timeout
     
     // Setup request channels and start off persons[] clean
     for(int i = 0; i < num_worker_threads; i++){
-        channels[i] = new NetworkRequestChannel(host, port);;
+        channels[i] = new NetworkRequestChannel(host, port);
         persons[i] = -1;
         if(channels[i]->read_socket() > max) {
             max = channels[i]->read_socket();
@@ -182,13 +183,19 @@ void* event_thread(void* c){
             FD_SET(channels[i]->read_socket(), &read_fd_set);
         }
         
-        selected = select(max+1, &read_fd_set, NULL, NULL, &to);
+        
+        cout << "Read count is " << read_count << " with " << num_requests << "\n";
+        if(read_count < num_requests * NUM_PEOPLE)
+            selected = select(max+1, &read_fd_set, NULL, NULL, &to);
+        else
+            break;
+        cout << "After select\n";
         
         if(selected){
             for(int i = 0; i < num_worker_threads; i++){
                 if(FD_ISSET(channels[i]->read_socket(), &read_fd_set)){
-                    string server_response = channels[i]->cread();
                     read_count++;
+                    string server_response = channels[i]->cread();
                     response_buffers[persons[i]]->push(Response(server_response, persons[i], 0));
                     
                     // If there are more requests to handle, take care of it
@@ -203,13 +210,14 @@ void* event_thread(void* c){
         }
         
         // No more requests to read
-        if(read_count == num_requests * NUM_PEOPLE)
+        if(read_count == num_requests * NUM_PEOPLE - 1){
             break;
+        }
     }
     
     // Close channels
     for(int i = 0; i < num_worker_threads; i++){
-        channels[i]->cwrite("quit");
+        channels[i]->send_request("quit");
     }
     //chan.cwrite("quit");
     
@@ -261,11 +269,13 @@ int main(int argc, char * argv[]) {
             default:
                 num_requests = 10000;
                 buffer_size = 300;
-                num_worker_threads = 15;
+                num_worker_threads = 1;
                 port = "50001";
                 host = "127.0.0.1";
         }
     }
+    
+    num_worker_threads = 1;
    
     pthread_t request_threads[NUM_PEOPLE];
     pthread_t event_handler_thread;
@@ -345,7 +355,7 @@ int main(int argc, char * argv[]) {
     cout << "------------------------------\n";
     cout << "Data requests per person: " << num_requests << "\n";
     cout << "Size of bounded buffer:   " << buffer_size << "\n";
-    cout << "Worker threads:           " << num_request_threads << "\n";
+    cout << "Worker threads:           " << num_worker_threads << "\n";
     cout << "Run Time:                 " << runtime << "s\n";
     
     // Echo out histogram

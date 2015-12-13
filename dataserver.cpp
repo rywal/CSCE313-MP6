@@ -128,12 +128,12 @@ void *connection_handler(void * arg) {
     char buf[1024];
     NetworkRequestChannel *chan = (NetworkRequestChannel*)arg;
     for(;;) {
-        recv(chan->read_socket(), buf, sizeof(buf), 0);
+        recv(chan->read_socket(), buf, 1024, 0);
         string request = buf;
 
         if (request.compare("quit") == 0) {
             chan->cwrite("bye");
-            usleep(8000);
+            usleep(11000);
             break;
         }
 
