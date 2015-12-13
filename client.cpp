@@ -140,7 +140,6 @@ void histogram_alarm(int sig){
 
 // Function to be performed by the event handler thread
 void* event_thread(void* c){
-    num_requests = (uintptr_t)c;
     NetworkRequestChannel chan(host, port);
     NetworkRequestChannel* channels[num_worker_threads];
     fd_set read_fd_set;
@@ -266,6 +265,8 @@ int main(int argc, char * argv[]) {
                 host = "127.0.0.1";
         }
     }
+    
+    num_worker_threads = 1;
    
     pthread_t request_threads[NUM_PEOPLE];
     pthread_t event_handler_thread;
