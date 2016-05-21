@@ -1,0 +1,4 @@
+client
+dataserver
+*.dSYM
+*.zip
